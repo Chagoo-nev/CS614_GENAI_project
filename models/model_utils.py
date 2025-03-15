@@ -1,3 +1,10 @@
+"""
+Utility functions for model operations including generation and answer checking.
+"""
+
+import torch
+import re
+
 def generate_solution(model, tokenizer, prompt, max_new_tokens=512):
     """
     Generate a solution for a math problem, ensuring stability and avoiding randomness.
@@ -149,3 +156,29 @@ def test_models(main_model, main_tokenizer, checker_model, checker_tokenizer):
         print(f" Error testing checker model: {e}")
 
     print("\nModel tests completed successfully.")
+
+
+
+def extract_numeric_answer(answer_text):
+    """
+    从 GSM8K 数据集中提取 `####` 之后的正确答案。
+
+    Args:
+        answer_text: 包含答案的文本
+
+    Returns:
+        str: 提取出的数值答案，或者 None 如果未找到
+    """
+    # GSM8K 数据格式是 "#### 数字"
+    ref_match = re.search(r'####\s*(-?[\d.]+)', answer_text)
+    if ref_match:
+        return ref_match.group(1)
+    
+    # 兼容其他格式，如 "FINAL ANSWER: 12"
+    final_answer_match = re.search(r'FINAL ANSWER:\s*(-?[\d.]+)', answer_text, re.IGNORECASE)
+    if final_answer_match:
+        return final_answer_match.group(1)
+    
+    # 最后尝试匹配任何数字
+    numbers = re.findall(r'-?[\d.]+', answer_text)
+    return numbers[-1] if numbers else None
