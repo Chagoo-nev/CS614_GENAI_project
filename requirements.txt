@@ -1,0 +1,11 @@
+torch
+transformers
+peft
+accelerate
+datasets
+numpy
+scipy
+evaluate
+sentencepiece
+tqdm
+pandas
