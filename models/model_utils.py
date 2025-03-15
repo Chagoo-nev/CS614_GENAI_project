@@ -9,6 +9,9 @@ def generate_solution(model, tokenizer, prompt, max_new_tokens=512):
     """
     Generate a solution for a math problem, ensuring stability and avoiding randomness.
     """
+
+    device = model.device
+
     # Tokenize input
     inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
 
@@ -71,6 +74,8 @@ def check_answer_with_model(checker_model, checker_tokenizer, generated_solution
     if check_answer_directly(generated_solution, reference_answer):
         return True, 0  # Return correct immediately, skipping the Instruct model
 
+    device = model.device
+    
     # If direct comparison fails, invoke the Instruct model
     checker_prompt = f"""As a math evaluator, determine if the solution to the problem is correct.
 

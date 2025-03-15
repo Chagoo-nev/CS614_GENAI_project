@@ -25,6 +25,11 @@ class GSM8KEvaluator:
             checker_model: Model for checking answers
             checker_tokenizer: Tokenizer for checker model
         """
+        # check gpu/cpu
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Using device: {self.device}")
+
+        # move models to devices
         self.main_model = main_model
         self.main_tokenizer = main_tokenizer
         self.checker_model = checker_model
