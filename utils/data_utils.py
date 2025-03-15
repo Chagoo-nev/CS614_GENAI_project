@@ -4,7 +4,6 @@ Utility functions for dataset loading, preprocessing, and few-shot example gener
 
 import re
 import random
-import torch
 from datasets import load_dataset
 
 def set_seed(seed):
