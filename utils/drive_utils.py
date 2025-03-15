@@ -3,7 +3,7 @@ Utility functions for Google Drive operations, including mounting, model loading
 """
 import os  
 import torch
-from google.colab import drive
+from google.colab import drive # type: ignore
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 BASE_PATH = "/content/drive/MyDrive/models"
@@ -95,7 +95,7 @@ def load_model_from_drive(model_name, base_path=BASE_PATH):
     
 
 
-def load_both_models(main_model_name="Llama-3.1-8B", checker_model_name="Llama-3.1-7B-Instruct", base_path=None):
+def load_both_models(main_model_name="Llama-3.1-8B", checker_model_name="Llama-3.1-7B-Instruct", base_path=BASE_PATH):
     """
     Load both main model and checker model from Google Drive.
     
