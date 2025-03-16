@@ -8,7 +8,8 @@ import torch
 
 from utils.data_utils import load_gsm8k_data, get_fewshot_examples, create_fewshot_prompt, extract_reference_answer
 from utils.eval_utils import calculate_metrics, save_results, print_evaluation_summary, print_progress
-from models.model_utils import generate_solution, check_answer_with_model
+from models.model_utils import generate_solution, check_answer_with_model, check_answer_directly
+
 
 class GSM8KEvaluator:
     """
