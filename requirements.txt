@@ -1,11 +1,11 @@
 torch==2.1.0
 transformers==4.34.0
-peft
 accelerate
-datasets
+peft
+datasets==2.14.4  # 兼容 evaluate
+evaluate==0.4.3  # 兼容 datasets
 numpy
 scipy
-evaluate
 sentencepiece
 tqdm
 pandas
