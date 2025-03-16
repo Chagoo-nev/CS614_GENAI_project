@@ -8,7 +8,7 @@ import torch
 
 from utils.data_utils import load_gsm8k_data, get_fewshot_examples, create_fewshot_prompt, extract_reference_answer
 from utils.eval_utils import calculate_metrics, save_results, print_evaluation_summary, print_progress
-from models.model_utils import generate_solution, check_answer_with_model, check_answer_directly
+from models.model_utils import generate_solution, check_answer_directly
 
 
 class GSM8KEvaluator:
@@ -16,7 +16,7 @@ class GSM8KEvaluator:
     Evaluator for GSM8K benchmark using few-shot prompting and model-based answer checking.
     """
     
-    def __init__(self, main_model, main_tokenizer, checker_model, checker_tokenizer):
+    def __init__(self, main_model, main_tokenizer):
         """
         Initialize the evaluator with models.
         
@@ -38,7 +38,7 @@ class GSM8KEvaluator:
         
         # Set models to evaluation mode
         self.main_model.eval()
-        self.checker_model.eval()
+        # self.checker_model.eval()
 
     def run_evaluation(self, num_samples=100, max_new_tokens=512, save_dir="results", 
                     num_fewshot=5, seed=42, verbose=True):
@@ -98,7 +98,14 @@ class GSM8KEvaluator:
             )
             latencies.append(inference_time)
 
+
+            # 8. Only use direct answer matching
+            is_correct = check_answer_directly(solution, reference_answer)
+            check_time = 0  # Direct comparison takes no time
+
+            """
             # 8. Attempt direct answer matching first
+
             if check_answer_directly(solution, reference_answer):
                 is_correct = True
                 check_time = 0  # Direct comparison takes no time
@@ -116,7 +123,7 @@ class GSM8KEvaluator:
 
             if is_correct:
                 correct += 1
-
+            """
             # 9. Save results
             example_results.append({
                 "question": question,
