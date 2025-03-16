@@ -9,9 +9,6 @@ def generate_solution(model, tokenizer, prompt, max_new_tokens=512):
     """
     Generate a solution for a math problem, ensuring stability and avoiding randomness.
     """
-
-    device = checker_model.device  # 使用 checker_model 代替未定义的 model
-
     # Tokenize input
     inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
 
