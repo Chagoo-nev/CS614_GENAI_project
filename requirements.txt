@@ -1,11 +1,16 @@
-torch==2.1.0
-transformers==4.34.0
-accelerate
+torch
+torchvision
+torchaudio
+transformers
+huggingface-hub
 peft
-datasets==2.14.4  # 兼容 evaluate
-evaluate==0.4.3  # 兼容 datasets
+accelerate
+datasets
 numpy
 scipy
+evaluate
 sentencepiece
 tqdm
 pandas
+diffusers
+sentence-transformers
