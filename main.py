@@ -417,7 +417,7 @@ def run_evaluation(model, tokenizer, num_samples=100, max_new_tokens=512,
     
     return results
 
-def run_colab_workflow(mode='train', model_name="meta-llama/Llama-3.1-8B", 
+def run_colab_workflow(mode='train', model_name="Llama-3.1-8B", 
                      lora_output_dir="./lora_output", quant_bits=8, eval_samples=50, 
                      from_drive=False, to_drive=False):
     """
