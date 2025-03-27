@@ -470,7 +470,8 @@ def run_evaluation(model, tokenizer, num_samples=100, max_new_tokens=512,
 
 def run_colab_workflow(mode='train', model_name="Llama-3.1-8B", 
                      lora_output_dir="./lora_output", quant_bits=8, eval_samples=50, 
-                     from_drive=False, to_drive=False):
+                     from_drive=False, to_drive=False, use_qlora=False, 
+                     batch_size=1, gradient_accumulation_steps=8):
     """
     Run the complete workflow in a Colab-friendly way.
     
