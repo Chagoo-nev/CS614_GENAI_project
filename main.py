@@ -160,16 +160,30 @@ def run_lora_training(model_name="meta-llama/Llama-3.1-8B", output_dir="./lora_o
             use_auth_token=True
         )
 
-    # Handle special tokens
+    # 在run_lora_training函数中修改模型加载部分
+    print(f"Loading model: {model_name}")
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+    # 处理特殊token
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
-    
-    # Load model with reduced precision for efficiency
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        torch_dtype=torch.float16,
-        device_map="auto"
-    )
+
+    # 修改模型加载方式，避免meta device问题
+    if "drive/MyDrive" in model_name:
+        print("Loading model from Google Drive with specific device map...")
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            torch_dtype=torch.float16,
+            device_map="auto",
+            offload_folder="offload_folder",  # 添加offload文件夹
+            offload_state_dict=True,  # 允许卸载状态字典
+        )
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            torch_dtype=torch.float16,
+            device_map="auto"
+        )
     
     # Preprocess dataset (define inside the function for better encapsulation)
     def preprocess_function(examples):
