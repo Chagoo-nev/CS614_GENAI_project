@@ -140,50 +140,53 @@ def run_lora_training(model_name="meta-llama/Llama-3.1-8B", output_dir="./lora_o
     # Load model and tokenizer
     print(f"Loading model: {model_name}")
 
+    # 检查是否为本地路径或Drive路径
     if os.path.exists(model_name):
         # 从本地路径加载
-        print("Detected local model path. Loading from disk...")
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
-        model = AutoModelForCausalLM.from_pretrained(
-            model_name,
-            torch_dtype=torch.float16,
-            device_map="auto"
-        )
+        print(f"Loading model from local path: {model_name}")
+        try:
+            # 确保使用local_files_only=True
+            tokenizer = AutoTokenizer.from_pretrained(
+                model_name,
+                local_files_only=True
+            )
+
+            # 处理特殊token
+            if tokenizer.pad_token is None:
+                tokenizer.pad_token = tokenizer.eos_token
+
+            # 使用device_map分配模型到可用设备
+            model = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                torch_dtype=torch.float16,
+                device_map="auto",
+                local_files_only=True
+            )
+            
+            # 打印模型分配信息（如果可用）
+            if hasattr(model, "hf_device_map"):
+                print(f"Model device map: {model.hf_device_map}")
+        except Exception as e:
+            print(f"Error loading model from local path: {e}")
+            return None
     else:
-        # 从 Hugging Face 加载
-        print("Assuming model is from Hugging Face Hub. Attempting to download...")
-        tokenizer = AutoTokenizer.from_pretrained(model_name, use_auth_token=True)
-        model = AutoModelForCausalLM.from_pretrained(
-            model_name,
-            torch_dtype=torch.float16,
-            device_map="auto",
-            use_auth_token=True
-        )
-
-    # 在run_lora_training函数中修改模型加载部分
-    print(f"Loading model: {model_name}")
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-
-    # 处理特殊token
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-
-    # 修改模型加载方式，避免meta device问题
-    if "drive/MyDrive" in model_name:
-        print("Loading model from Google Drive with specific device map...")
-        model = AutoModelForCausalLM.from_pretrained(
-            model_name,
-            torch_dtype=torch.float16,
-            device_map="auto",
-            offload_folder="offload_folder",  # 添加offload文件夹
-            offload_state_dict=True,  # 允许卸载状态字典
-        )
-    else:
-        model = AutoModelForCausalLM.from_pretrained(
-            model_name,
-            torch_dtype=torch.float16,
-            device_map="auto"
-        )
+        # 从Hugging Face Hub加载
+        print(f"Loading model from Hugging Face Hub: {model_name}")
+        try:
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            
+            # 处理特殊token
+            if tokenizer.pad_token is None:
+                tokenizer.pad_token = tokenizer.eos_token
+                
+            model = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                torch_dtype=torch.float16,
+                device_map="auto"
+            )
+        except Exception as e:
+            print(f"Error loading model from Hugging Face: {e}")
+            return None
     
     # Preprocess dataset (define inside the function for better encapsulation)
     def preprocess_function(examples):
@@ -212,6 +215,17 @@ def run_lora_training(model_name="meta-llama/Llama-3.1-8B", output_dir="./lora_o
     
     # LoRA configuration
     print("Setting up LoRA configuration...")
+    
+    # 检查是否有设备映射，可能需要特殊处理
+    if hasattr(model, "hf_device_map"):
+        print("Model has device mapping, preparing for training...")
+        try:
+            from peft import prepare_model_for_kbit_training
+            model = prepare_model_for_kbit_training(model)
+            print("Model prepared for training with device mapping.")
+        except Exception as e:
+            print(f"Warning: Could not prepare model: {e}")
+    
     lora_config = LoraConfig(
         r=lora_r,
         lora_alpha=lora_alpha,
@@ -275,7 +289,6 @@ def run_quantization(model_path, save_path, bits=8, method="dynamic"):
         Path to the quantized model
     """
     import torch
-    from torch.ao.quantization import quantize_dynamic, default_dynamic_qconfig
     
     print(f"Starting Post-Training Quantization ({bits}-bit, {method})...")
     
@@ -305,9 +318,14 @@ def run_quantization(model_path, save_path, bits=8, method="dynamic"):
         if method == "dynamic":
             # Dynamic quantization - only weights are quantized, activations dynamically
             print("Applying 8-bit dynamic quantization...")
-            quantized_model = torch.ao.quantization.quantize_dynamic(
-                model, {torch.nn.Linear}, dtype=torch.qint8
-            )
+            try:
+                quantized_model = torch.ao.quantization.quantize_dynamic(
+                    model, {torch.nn.Linear}, dtype=torch.qint8
+                )
+                print("8-bit quantization applied successfully.")
+            except Exception as e:
+                print(f"Error during quantization: {e}")
+                return None
         else:
             # Static quantization would require calibration data
             print("Static 8-bit quantization not yet implemented")
@@ -471,17 +489,23 @@ def run_colab_workflow(mode='train', model_name="Llama-3.1-8B",
     results = {}
     
     # Mount Google Drive if needed
+    if from_drive or to_drive:
+        print("Mounting Google Drive...")
+        mount_drive()
+    
+    # 构建模型路径
     if from_drive:
+        # 组装完整的Drive路径
         model_path = f"/content/drive/MyDrive/models/{model_name}"
+        print(f"Using model from Google Drive: {model_path}")
+        
+        # 检查路径是否存在
+        if not os.path.exists(model_path):
+            print(f"Warning: Model path {model_path} does not exist in Drive!")
     else:
+        # 使用提供的模型名称（可能是HuggingFace模型ID）
         model_path = model_name
-
-    # Run LoRA training
-    lora_model_path = run_lora_training(
-        model_name=model_path,
-        output_dir=lora_output_dir
-    )
-
+        print(f"Using model: {model_path}")
     
     # --- TRAINING ---
     if mode == 'train' or mode == 'all':
@@ -498,8 +522,12 @@ def run_colab_workflow(mode='train', model_name="Llama-3.1-8B",
             drive_path = "/content/drive/MyDrive/models/lora_gsm8k"
             print(f"Saving LoRA model to Google Drive: {drive_path}")
             
-            # Implement saving logic here
-            # This could be a simple file copy or using special save functions
+            # 创建目标目录
+            os.makedirs(drive_path, exist_ok=True)
+            
+            # 复制文件到Drive
+            os.system(f"cp -r {lora_model_path}/* {drive_path}/")
+            print(f"Model copied to Google Drive: {drive_path}")
             
         results['training'] = {
             'lora_model_path': lora_model_path,
@@ -517,10 +545,23 @@ def run_colab_workflow(mode='train', model_name="Llama-3.1-8B",
         else:
             # Use a specified model
             if from_drive:
-                # Logic to load from Drive
-                model_to_quantize = "/content/drive/MyDrive/models/lora_gsm8k"
+                # 检查是否存在LoRA路径
+                lora_drive_path = "/content/drive/MyDrive/models/lora_gsm8k"
+                if os.path.exists(lora_drive_path):
+                    model_to_quantize = lora_drive_path
+                    print(f"Using LoRA model from Drive for quantization: {model_to_quantize}")
+                else:
+                    model_to_quantize = model_path
+                    print(f"Using base model for quantization: {model_to_quantize}")
             else:
-                model_to_quantize = lora_output_dir + "/final_model"
+                # 检查LoRA输出目录
+                lora_model_dir = os.path.join(lora_output_dir, "final_model")
+                if os.path.exists(lora_model_dir):
+                    model_to_quantize = lora_model_dir
+                    print(f"Using local LoRA model for quantization: {model_to_quantize}")
+                else:
+                    model_to_quantize = model_path
+                    print(f"Using base model for quantization: {model_to_quantize}")
         
         # Apply quantization
         quantized_model_path = run_quantization(
@@ -528,6 +569,18 @@ def run_colab_workflow(mode='train', model_name="Llama-3.1-8B",
             save_path="./quantized_model",
             bits=quant_bits
         )
+        
+        # Save to Drive if requested
+        if to_drive and quantized_model_path:
+            drive_path = f"/content/drive/MyDrive/models/quantized_{quant_bits}bit"
+            print(f"Saving quantized model to Google Drive: {drive_path}")
+            
+            # 创建目标目录
+            os.makedirs(drive_path, exist_ok=True)
+            
+            # 复制文件到Drive
+            os.system(f"cp -r {quantized_model_path}/* {drive_path}/")
+            print(f"Quantized model copied to Google Drive: {drive_path}")
         
         results['quantization'] = {
             'quantized_model_path': quantized_model_path,
@@ -542,48 +595,100 @@ def run_colab_workflow(mode='train', model_name="Llama-3.1-8B",
         # Determine which model to evaluate
         if mode == 'all' and 'quantization' in results and results['quantization']['completed']:
             # Evaluate the just-quantized model
-            model_path = results['quantization']['quantized_model_path']
+            model_path_for_eval = results['quantization']['quantized_model_path']
+            print(f"Evaluating quantized model: {model_path_for_eval}")
         elif mode == 'all' and 'training' in results and results['training']['completed']:
             # Evaluate the just-trained LoRA model
-            model_path = results['training']['lora_model_path']
+            model_path_for_eval = results['training']['lora_model_path']
+            print(f"Evaluating LoRA model: {model_path_for_eval}")
         else:
             # Evaluate a specified model
-            if from_drive:
-                model_path = "/content/drive/MyDrive/models/Llama-3.1-8B"  # Example
-            else:
-                model_path = model_name  # Use the original model
+            model_path_for_eval = model_path
+            print(f"Evaluating base model: {model_path_for_eval}")
         
         # Load model for evaluation
-        print(f"Loading model for evaluation from: {model_path}")
+        print(f"Loading model for evaluation from: {model_path_for_eval}")
         try:
-            if from_drive and "drive/MyDrive" in model_path:
-                # Use special loading function for Drive models
-                model, tokenizer = load_model_from_drive(os.path.basename(model_path))
+            # 确定是否加载LoRA模型
+            is_lora_model = "lora" in model_path_for_eval.lower() or os.path.exists(os.path.join(model_path_for_eval, "adapter_config.json"))
+            
+            if is_lora_model:
+                # 加载LoRA模型
+                print("Detected LoRA model, loading with appropriate method...")
+                try:
+                    config = PeftConfig.from_pretrained(model_path_for_eval)
+                    print(f"Loading base model: {config.base_model_name_or_path}")
+                    
+                    # 如果基础模型是本地路径，需要处理
+                    if os.path.exists(config.base_model_name_or_path):
+                        base_model = AutoModelForCausalLM.from_pretrained(
+                            config.base_model_name_or_path,
+                            torch_dtype=torch.float16,
+                            device_map="auto",
+                            local_files_only=True
+                        )
+                        tokenizer = AutoTokenizer.from_pretrained(
+                            config.base_model_name_or_path,
+                            local_files_only=True
+                        )
+                    else:
+                        base_model = AutoModelForCausalLM.from_pretrained(
+                            config.base_model_name_or_path,
+                            torch_dtype=torch.float16,
+                            device_map="auto"
+                        )
+                        tokenizer = AutoTokenizer.from_pretrained(config.base_model_name_or_path)
+                    
+                    # 加载LoRA适配器
+                    model = PeftModel.from_pretrained(base_model, model_path_for_eval)
+                    print("LoRA model loaded successfully.")
+                except Exception as e:
+                    print(f"Error loading LoRA model: {e}")
+                    return results
             else:
-                # Regular loading
-                if "lora" in model_path.lower():
-                    # Load a LoRA model
-                    config = PeftConfig.from_pretrained(model_path)
-                    base_model = AutoModelForCausalLM.from_pretrained(
-                        config.base_model_name_or_path,
-                        torch_dtype=torch.float16,
+                # 加载标准模型
+                print("Loading standard model...")
+                # 检查是否为本地路径
+                if os.path.exists(model_path_for_eval):
+                    model = AutoModelForCausalLM.from_pretrained(
+                        model_path_for_eval,
+                        device_map="auto",
+                        local_files_only=True
+                    )
+                    tokenizer = AutoTokenizer.from_pretrained(
+                        model_path_for_eval,
+                        local_files_only=True
+                    )
+                else:
+                    model = AutoModelForCausalLM.from_pretrained(
+                        model_path_for_eval,
                         device_map="auto"
                     )
-                    model = PeftModel.from_pretrained(base_model, model_path)
-                    tokenizer = AutoTokenizer.from_pretrained(config.base_model_name_or_path)
-                else:
-                    # Load a regular model
-                    model = AutoModelForCausalLM.from_pretrained(model_path, device_map="auto")
-                    tokenizer = AutoTokenizer.from_pretrained(model_path)
+                    tokenizer = AutoTokenizer.from_pretrained(model_path_for_eval)
+                
+                print("Standard model loaded successfully.")
             
             # Run evaluation
             if model is not None and tokenizer is not None:
+                # 创建评估输出目录
+                eval_dir = "./evaluation_results"
+                os.makedirs(eval_dir, exist_ok=True)
+                
+                # 运行评估
                 eval_results = run_evaluation(
                     model=model, 
                     tokenizer=tokenizer,
                     num_samples=eval_samples,
-                    save_dir="./evaluation_results"
+                    save_dir=eval_dir
                 )
+                
+                # 保存结果到Drive（如果需要）
+                if to_drive:
+                    drive_eval_dir = "/content/drive/MyDrive/models/evaluation_results"
+                    os.makedirs(drive_eval_dir, exist_ok=True)
+                    os.system(f"cp -r {eval_dir}/* {drive_eval_dir}/")
+                    print(f"Evaluation results saved to Google Drive: {drive_eval_dir}")
+                
                 results['evaluation'] = eval_results
             else:
                 print("Failed to load model for evaluation")
