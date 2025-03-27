@@ -33,8 +33,8 @@ class GSM8KEvaluator:
         # move models to devices
         self.main_model = main_model
         self.main_tokenizer = main_tokenizer
-        self.checker_model = checker_model
-        self.checker_tokenizer = checker_tokenizer
+        # self.checker_model = checker_model
+        # self.checker_tokenizer = checker_tokenizer
         
         # Set models to evaluation mode
         self.main_model.eval()
@@ -100,6 +100,7 @@ class GSM8KEvaluator:
 
 
             # 8. Only use direct answer matching
+            
             is_correct = check_answer_directly(solution, reference_answer)
             check_time = 0  # Direct comparison takes no time
 

@@ -78,65 +78,65 @@ def check_answer_directly(generated_solution, reference_answer):
     return pred_answer == ref_answer  # 自动忽略 18 vs 18.0 的问题
 
 
-def check_answer_with_model(checker_model, checker_tokenizer, generated_solution, reference_answer, question):
-    """
-    First, attempt to compare numeric values directly. If they match, return True. Otherwise, invoke the Instruct model for verification.
-    """
-    # First, attempt direct numeric comparison
-    if check_answer_directly(generated_solution, reference_answer):
-        return True, 0  # Return correct immediately, skipping the Instruct model
+# def check_answer_with_model(checker_model, checker_tokenizer, generated_solution, reference_answer, question):
+#     """
+#     First, attempt to compare numeric values directly. If they match, return True. Otherwise, invoke the Instruct model for verification.
+#     """
+#     # First, attempt direct numeric comparison
+#     if check_answer_directly(generated_solution, reference_answer):
+#         return True, 0  # Return correct immediately, skipping the Instruct model
 
-    # device = model.device
+#     # device = model.device
     
-    # If direct comparison fails, invoke the Instruct model
-    checker_prompt = f"""As a math evaluator, determine if the solution to the problem is correct.
+#     # If direct comparison fails, invoke the Instruct model
+#     checker_prompt = f"""As a math evaluator, determine if the solution to the problem is correct.
 
-PROBLEM:
-{question}
+# PROBLEM:
+# {question}
 
-CORRECT ANSWER:
-{reference_answer}
+# CORRECT ANSWER:
+# {reference_answer}
 
-STUDENT SOLUTION:
-{generated_solution}
+# STUDENT SOLUTION:
+# {generated_solution}
 
-Determine if the student arrived at the correct answer.
-Reply with 'CORRECT' or 'INCORRECT' only.
-"""
+# Determine if the student arrived at the correct answer.
+# Reply with 'CORRECT' or 'INCORRECT' only.
+# """
 
-    # Tokenize checker prompt
-    inputs = checker_tokenizer(checker_prompt, return_tensors="pt").to(checker_model.device)
+#     # Tokenize checker prompt
+#     inputs = checker_tokenizer(checker_prompt, return_tensors="pt").to(checker_model.device)
 
-    # Record Checker computation time
-    start_time = torch.cuda.Event(enable_timing=True)
-    end_time = torch.cuda.Event(enable_timing=True)
+#     # Record Checker computation time
+#     start_time = torch.cuda.Event(enable_timing=True)
+#     end_time = torch.cuda.Event(enable_timing=True)
 
-    start_time.record()
+#     start_time.record()
 
-    # Generate Checker output
-    with torch.no_grad():
-        outputs = checker_model.generate(
-            **inputs,
-            max_new_tokens=20,
-            temperature=0.1,  # Low temperature for stability
-            do_sample=False  # Disable randomness
-        )
+#     # Generate Checker output
+#     with torch.no_grad():
+#         outputs = checker_model.generate(
+#             **inputs,
+#             max_new_tokens=20,
+#             temperature=0.1,  # Low temperature for stability
+#             do_sample=False  # Disable randomness
+#         )
 
-    end_time.record()
-    torch.cuda.synchronize()
-    check_time = start_time.elapsed_time(end_time) / 1000  # Convert to seconds
+#     end_time.record()
+#     torch.cuda.synchronize()
+#     check_time = start_time.elapsed_time(end_time) / 1000  # Convert to seconds
 
-    # Parse checker output
-    evaluation = checker_tokenizer.decode(outputs[0], skip_special_tokens=True)
-    evaluation = evaluation[len(checker_prompt):].strip()
+#     # Parse checker output
+#     evaluation = checker_tokenizer.decode(outputs[0], skip_special_tokens=True)
+#     evaluation = evaluation[len(checker_prompt):].strip()
 
-    # **Ensure formatted answer correctly matches**
-    is_correct = "CORRECT" in evaluation.upper()
+#     # **Ensure formatted answer correctly matches**
+#     is_correct = "CORRECT" in evaluation.upper()
 
-    return is_correct, check_time
+#     return is_correct, check_time
 
 
-def test_models(main_model, main_tokenizer, checker_model, checker_tokenizer):
+def test_models(main_model, main_tokenizer):
     """
     Test whether the models function correctly and generate text properly.
     """
