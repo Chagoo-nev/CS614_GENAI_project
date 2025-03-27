@@ -14,3 +14,6 @@ tqdm
 pandas
 diffusers
 sentence-transformers
+optimum 
+bitsandbytes
+tensorboard
