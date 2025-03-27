@@ -438,8 +438,17 @@ def run_colab_workflow(mode='train', model_name="Llama-3.1-8B",
     results = {}
     
     # Mount Google Drive if needed
-    if from_drive or to_drive:
-        mount_drive()
+    if from_drive:
+        model_path = f"/content/drive/MyDrive/models/{model_name}"
+    else:
+        model_path = model_name
+
+    # Run LoRA training
+    lora_model_path = run_lora_training(
+        model_name=model_path,
+        output_dir=lora_output_dir
+    )
+
     
     # --- TRAINING ---
     if mode == 'train' or mode == 'all':
