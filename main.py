@@ -139,8 +139,27 @@ def run_lora_training(model_name="meta-llama/Llama-3.1-8B", output_dir="./lora_o
     
     # Load model and tokenizer
     print(f"Loading model: {model_name}")
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    
+
+    if os.path.exists(model_name):
+        # 从本地路径加载
+        print("Detected local model path. Loading from disk...")
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            torch_dtype=torch.float16,
+            device_map="auto"
+        )
+    else:
+        # 从 Hugging Face 加载
+        print("Assuming model is from Hugging Face Hub. Attempting to download...")
+        tokenizer = AutoTokenizer.from_pretrained(model_name, use_auth_token=True)
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            torch_dtype=torch.float16,
+            device_map="auto",
+            use_auth_token=True
+        )
+
     # Handle special tokens
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
