@@ -511,28 +511,46 @@ def run_colab_workflow(mode='train', model_name="Llama-3.1-8B",
     if mode == 'train' or mode == 'all':
         print("\n=== TRAINING MODE ===")
         
-        # Run LoRA training
-        lora_model_path = run_lora_training(
-            model_name=model_path,
-            output_dir=lora_output_dir
-        )
+        if use_qlora:
+            # 使用QLoRA训练
+            print("Using QLoRA training...")
+            # 使用脚本定义的函数或直接在这里实现QLoRA
+            try:
+                # 导入QLoRA训练脚本
+                from scripts.train_qlora import train_qlora_model
+                
+                # 构建参数
+                class QLoraArgs:
+                    def __init__(self):
+                        self.model_name = model_path
+                        self.output_dir = lora_output_dir
+                        self.quantization_bits = quant_bits
+                        self.lora_r = 8
+                        self.lora_alpha = 16
+                        self.lora_dropout = 0.05
+                        self.num_epochs = 3
+                        self.learning_rate = 5e-5
+                        self.batch_size = batch_size
+                        self.gradient_accumulation_steps = gradient_accumulation_steps
+                        self.seed = 42
+                        self.max_length = 512
+                        self.local_files_only = os.path.exists(model_path)
+                
+                args = QLoraArgs()
+                _, _, lora_model_path = train_qlora_model(args)
+                print(f"QLoRA training completed. Model saved to {lora_model_path}")
+                
+            except Exception as e:
+                print(f"Error during QLoRA training: {e}")
+                lora_model_path = None
+        else:
+            # 使用普通LoRA训练
+            lora_model_path = run_lora_training(
+                model_name=model_path,
+                output_dir=lora_output_dir,
+                batch_size=batch_size
+            )
         
-        # Save to Drive if requested
-        if to_drive and lora_model_path:
-            drive_path = "/content/drive/MyDrive/models/lora_gsm8k"
-            print(f"Saving LoRA model to Google Drive: {drive_path}")
-            
-            # 创建目标目录
-            os.makedirs(drive_path, exist_ok=True)
-            
-            # 复制文件到Drive
-            os.system(f"cp -r {lora_model_path}/* {drive_path}/")
-            print(f"Model copied to Google Drive: {drive_path}")
-            
-        results['training'] = {
-            'lora_model_path': lora_model_path,
-            'completed': lora_model_path is not None
-        }
     
     # --- QUANTIZATION ---
     if mode == 'quantize' or mode == 'all':
