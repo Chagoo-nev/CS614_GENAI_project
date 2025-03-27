@@ -456,7 +456,7 @@ def run_colab_workflow(mode='train', model_name="Llama-3.1-8B",
         
         # Run LoRA training
         lora_model_path = run_lora_training(
-            model_name=model_name,
+            model_name=model_path,
             output_dir=lora_output_dir
         )
         
