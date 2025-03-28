@@ -7,6 +7,44 @@ import json
 import time
 import torch
 
+def generate_solution(model, tokenizer, prompt, max_new_tokens=512, temperature=0.0):
+    """
+    使用模型生成解决方案并计时。
+    
+    Args:
+        model: 用于生成的模型
+        tokenizer: 分词器
+        prompt: 输入提示文本
+        max_new_tokens: 最大生成令牌数
+        temperature: 温度参数，控制随机性
+        
+    Returns:
+        tuple: (生成文本, 推理时间)
+    """
+    # 准备输入
+    inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+    
+    # 开始计时
+    start_time = time.time()
+    
+    # 生成文本
+    with torch.no_grad():
+        outputs = model.generate(
+            **inputs,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            do_sample=False if temperature == 0 else True,
+            pad_token_id=tokenizer.eos_token_id
+        )
+    
+    # 结束计时
+    inference_time = time.time() - start_time
+    
+    # 解码输出并去除提示部分
+    generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    solution = generated_text[len(prompt):]
+    
+    return solution, inference_time
 def calculate_metrics(correct, num_samples, latencies, start_time=None):
     """
     Calculate evaluation metrics.

@@ -17,7 +17,7 @@ from peft import PeftModel, PeftConfig
 # Import project utilities
 from utils.drive_utils import mount_drive, load_model_from_drive, save_model_to_drive
 from utils.data_utils import load_gsm8k_data, get_fewshot_examples, create_fewshot_prompt, extract_reference_answer
-from utils.eval_utils import calculate_metrics, save_results, print_evaluation_summary
+from utils.eval_utils import calculate_metrics, save_results, print_evaluation_summary,generate_solution
 
 # For simplified evaluation without checker model
 def simplified_check_answer(generated_solution, reference_answer, verbose=False):
