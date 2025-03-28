@@ -42,20 +42,21 @@ def simplified_check_answer(generated_solution, reference_answer):
     gen_patterns = [
         r'####\s*(-?[\d.]+)',  # Standard GSM8K format
         r'(?:final answer|answer|result)(?:\s+is)?[:\s]+(-?[\d.]+)',  # Various text patterns
-        r'[-\d.]+$'  # Last number in text
     ]
     
     for pattern in gen_patterns:
         gen_match = re.search(pattern, generated_solution, re.IGNORECASE)
-        if gen_match:
+        if gen_match and gen_match.groups():  # 确保捕获组存在
             gen_answer = gen_match.group(1)
             return gen_answer.strip() == ref_answer.strip()
     
-    # If no pattern matched, try to find any numbers in the text
+    # 如果上面的模式都没匹配到，尝试查找任何数字
     numbers = re.findall(r'-?[\d.]+', generated_solution)
     if numbers:
-        gen_answer = numbers[-1]  # Take the last number found
-        return gen_answer.strip() == ref_answer.strip()
+        # 检查每个找到的数字是否与参考答案匹配
+        for num in numbers:
+            if num.strip() == ref_answer.strip():
+                return True
     
     return False
 
