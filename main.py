@@ -306,7 +306,7 @@ def quantize_model_with_bnb(model_path, save_path, bits=8):
     model = AutoModelForCausalLM.from_pretrained(
         model_path,
         quantization_config=quantization_config,
-        device_map="auto"
+        device_map={"": 0}
     )
     
     # 加载tokenizer
