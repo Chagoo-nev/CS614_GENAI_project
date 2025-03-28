@@ -294,7 +294,7 @@ def quantize_model_with_bnb(model_path, save_path, bits=8):
     print(f"模型已量化并保存到 {save_path_with_bits}")
     return save_path_with_bits
 
-def run_evaluation(model, tokenizer, num_samples=100, max_new_tokens=512, 
+def run_evaluation(model, tokenizer, num_samples=100, max_new_tokens=768, 
                   fewshot=8, seed=42, save_dir="./results", verbose=True):
     """
     Evaluate a model on the GSM8K benchmark using few-shot prompting.
