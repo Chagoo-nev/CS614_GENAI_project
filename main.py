@@ -20,45 +20,79 @@ from utils.data_utils import load_gsm8k_data, get_fewshot_examples, create_fewsh
 from utils.eval_utils import calculate_metrics, save_results, print_evaluation_summary
 
 # For simplified evaluation without checker model
-def simplified_check_answer(generated_solution, reference_answer):
+def simplified_check_answer(generated_solution, reference_answer, verbose=False):
     """
     提取模型输出与参考答案中 `#### num` 的数字，仅比较数值是否一致。
     忽略 `$`、逗号、空格等格式，默认只用 `####` 后的数值进行比较。
+    
+    Args:
+        generated_solution: 模型生成的解答
+        reference_answer: 参考答案
+        verbose: 是否打印详细信息
+    
+    Returns:
+        bool: 答案是否正确
     """
     import re
 
     def clean_number(text):
-        # 去除 $, 逗号，空格
-        return re.sub(r"[\$,]", "", text).strip()
+        # 去除 $, 逗号，空格等，统一格式
+        return re.sub(r"[\$,\s]", "", text).strip()
 
     try:
-        # 只从参考答案中提取 #### 后面的数字
+        # 从参考答案中提取 #### 后面的数字
         ref_match = re.search(r"####\s*(-?[\d,\.]+)", reference_answer)
         if not ref_match:
-            print("❗无法从参考答案中提取 #### 数字")
-            return False
-        ref_answer = clean_number(ref_match.group(1))
-
-        # 尝试从模型输出中提取 #### 后的数字
+            if verbose:
+                print("❗无法从参考答案中提取 #### 数字")
+            # 尝试直接提取任何数字
+            ref_numbers = re.findall(r"-?[\d,\.]+", reference_answer)
+            if ref_numbers:
+                ref_answer = clean_number(ref_numbers[-1])
+            else:
+                return False
+        else:
+            ref_answer = clean_number(ref_match.group(1))
+        
+        # 尝试多种方式从模型输出中提取答案
+        gen_answer = None
+        
+        # 方法1：尝试匹配 #### 
         gen_match = re.search(r"####\s*(-?[\d,\.]+)", generated_solution)
         if gen_match:
             gen_answer = clean_number(gen_match.group(1))
-        else:
-            # fallback：抓最后一个数字作为候选答案
+        
+        # 方法2：尝试匹配 "答案是" 或 "answer is" 等常见模式
+        if gen_answer is None:
+            answer_match = re.search(r"(?:答案|answer|result)(?:\s+is)?[\s:]+(-?[\d,\.]+)", 
+                                    generated_solution, re.IGNORECASE)
+            if answer_match:
+                gen_answer = clean_number(answer_match.group(1))
+        
+        # 方法3：提取所有数字，使用最后一个
+        if gen_answer is None:
             numbers = re.findall(r"-?[\d,\.]+", generated_solution)
-            gen_answer = clean_number(numbers[-1]) if numbers else None
-
-        # 打印调试信息
-        print(f"Model Output:\n{generated_solution.strip()}")
-        print(f"Extracted Model Answer: {gen_answer}")
-        print(f"Reference Answer: {ref_answer}")
-
+            if numbers:
+                gen_answer = clean_number(numbers[-1])
+        
+        # 如果未提取到任何数字，返回False
+        if gen_answer is None:
+            if verbose:
+                print("无法从模型输出中提取数字答案")
+            return False
+        
+        # 只在verbose模式下打印调试信息
+        if verbose:
+            print(f"提取的模型答案: {gen_answer}")
+            print(f"参考答案: {ref_answer}")
+            
+        # 比较答案
         return gen_answer == ref_answer
 
     except Exception as e:
-        print(f"[Error] simplified_check_answer failed: {e}")
+        if verbose:
+            print(f"[Error] 答案检查失败: {e}")
         return False
-
 
 
 
@@ -298,20 +332,6 @@ def run_evaluation(model, tokenizer, num_samples=100, max_new_tokens=768,
                   fewshot=8, seed=42, save_dir="./results", verbose=True):
     """
     Evaluate a model on the GSM8K benchmark using few-shot prompting.
-    Simplified version that doesn't require a checker model.
-    
-    Args:
-        model: The model to evaluate
-        tokenizer: The tokenizer
-        num_samples: Number of samples to evaluate
-        max_new_tokens: Maximum tokens to generate
-        fewshot: Number of few-shot examples
-        seed: Random seed
-        save_dir: Directory to save results
-        verbose: Whether to print detailed progress
-        
-    Returns:
-        dict: Evaluation results
     """
     # Load dataset
     dataset = load_gsm8k_data()
@@ -342,49 +362,67 @@ def run_evaluation(model, tokenizer, num_samples=100, max_new_tokens=768,
     
     # Process each test example
     for i, example in enumerate(test_subset):
-        if verbose:
-            print(f"Processing example {i+1}/{num_samples}...")
-        
-        question = example["question"]
-        reference_answer = example["answer"]
-        
-        # Create few-shot prompt
-        prompt = create_fewshot_prompt(question, fewshot_examples)
-        
-        # Generate solution
-        solution, inference_time = generate_solution(
-            model, 
-            tokenizer, 
-            prompt, 
-            max_new_tokens=max_new_tokens
-        )
-        latencies.append(inference_time)
-        
-        # Check if answer is correct
-        is_correct = simplified_check_answer(solution, reference_answer)
-        if is_correct:
-            correct += 1
-        print(f"\n--- Example {i+1}/{num_samples} ---")
-        print(f"Question:\n{question}")
-        print(f"Model Output:\n{solution.strip()}")
-        print(f"{'Correct' if is_correct else 'Incorrect'}\n")
-
-        
-        # Store result
-        example_results.append({
-            "question": question,
-            "reference_answer": reference_answer,
-            "generated_solution": solution,
-            "is_correct": is_correct,
-            "inference_time": inference_time
-        })
-        
-        # Print progress
-        if verbose and (i+1) % 5 == 0:
-            print(f"Progress: {i+1}/{num_samples} examples processed")
-            print(f"Current accuracy: {correct/(i+1)*100:.2f}%")
-            print(f"Average inference time: {sum(latencies)/(i+1):.2f}s")
-        
+        try:
+            if verbose:
+                print(f"Processing example {i+1}/{num_samples}...")
+            
+            question = example["question"]
+            reference_answer = example["answer"]
+            
+            # Create few-shot prompt
+            prompt = create_fewshot_prompt(question, fewshot_examples)
+            
+            # Generate solution
+            solution, inference_time = generate_solution(
+                model, 
+                tokenizer, 
+                prompt, 
+                max_new_tokens=max_new_tokens
+            )
+            latencies.append(inference_time)
+            
+            # Check if answer is correct
+            try:
+                is_correct = simplified_check_answer(solution, reference_answer)
+                if is_correct:
+                    correct += 1
+            except Exception as e:
+                print(f"Error checking answer: {e}")
+                is_correct = False
+            
+            # Only print detailed output if verbose is enabled
+            if verbose:
+                print(f"\n--- Example {i+1}/{num_samples} ---")
+                print(f"Question:\n{question}")
+                print(f"Model Output:\n{solution[:200]}..." if len(solution) > 200 else f"Model Output:\n{solution}")
+                print(f"{'Correct' if is_correct else 'Incorrect'}\n")
+            
+            # Store result (with truncated solution to save memory)
+            example_results.append({
+                "question": question,
+                "reference_answer": reference_answer,
+                "generated_solution": solution[:500] if len(solution) > 500 else solution,  # Truncate long outputs
+                "is_correct": is_correct,
+                "inference_time": inference_time
+            })
+            
+            # Print progress
+            if (i+1) % 5 == 0:
+                print(f"Progress: {i+1}/{num_samples} examples processed")
+                print(f"Current accuracy: {correct/(i+1)*100:.2f}%")
+                print(f"Average inference time: {sum(latencies)/(i+1):.2f}s")
+                
+        except Exception as e:
+            print(f"Error processing example {i+1}: {e}")
+            # Continue with next example instead of failing
+            example_results.append({
+                "question": example["question"] if "question" in example else "Error",
+                "reference_answer": example["answer"] if "answer" in example else "Error",
+                "generated_solution": "Error during processing",
+                "is_correct": False,
+                "inference_time": 0
+            })
+    
     # Calculate metrics
     results = calculate_metrics(correct, num_samples, latencies, start_time)
     
