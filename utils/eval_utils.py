@@ -7,7 +7,7 @@ import json
 import time
 import torch
 
-def generate_solution(model, tokenizer, prompt, max_new_tokens=512, temperature=0.0):
+def generate_solution(model, tokenizer, prompt, max_new_tokens=728, temperature=0.0):
     """
     使用模型生成解决方案并计时。
     
@@ -63,7 +63,8 @@ def calculate_metrics(correct, num_samples, latencies, start_time=None):
     avg_latency = sum(latencies) / len(latencies)
     
     # Get peak GPU memory if available
-    peak_memory = torch.cuda.max_memory_allocated() / (1024**3) if torch.cuda.is_available() else 0
+    # peak_memory = torch.cuda.max_memory_allocated() / (1024**3) if torch.cuda.is_available() else 0
+    current_memory = torch.cuda.memory_allocated() / (1024**3) if torch.cuda.is_available() else 0
     
     # Calculate total evaluation time if start_time is provided
     total_time = None
@@ -77,7 +78,8 @@ def calculate_metrics(correct, num_samples, latencies, start_time=None):
         "avg_inference_time": avg_latency,
         "min_inference_time": min(latencies),
         "max_inference_time": max(latencies),
-        "peak_memory_gb": peak_memory,
+        # "peak_memory_gb": peak_memory,
+        "current_memory_gb": current_memory,
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
     }
     
@@ -131,7 +133,8 @@ def print_evaluation_summary(results):
     print(f"Average inference time: {results['avg_inference_time']:.2f} seconds")
     if 'total_evaluation_time' in results:
         print(f"Total evaluation time: {results['total_evaluation_time']:.2f} seconds")
-    print(f"Peak GPU memory: {results['peak_memory_gb']:.2f} GB")
+    # print(f"Peak GPU memory: {results['peak_memory_gb']:.2f} GB")
+    print(f"Current GPU memory: {results['current_memory_gb']:.2f} GB")
 
 def print_progress(i, num_samples, correct, start_time=None):
     """

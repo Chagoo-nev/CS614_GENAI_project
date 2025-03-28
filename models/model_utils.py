@@ -5,7 +5,7 @@ Utility functions for model operations including generation and answer checking.
 import torch
 import re
 
-def generate_solution(model, tokenizer, prompt, max_new_tokens=512):
+def generate_solution(model, tokenizer, prompt, max_new_tokens=728):
     """
     Generate a solution for a math problem, ensuring stability and avoiding randomness.
     """
