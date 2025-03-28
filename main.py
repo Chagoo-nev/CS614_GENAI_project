@@ -22,47 +22,45 @@ from utils.eval_utils import calculate_metrics, save_results, print_evaluation_s
 # For simplified evaluation without checker model
 def simplified_check_answer(generated_solution, reference_answer):
     """
-    比较 generated_solution 和 reference_answer 的数值部分是否一致。
-    支持多种格式：#### 42, final answer is 42, answer: 42 等。
+    提取模型输出与参考答案中 `#### num` 的数字，仅比较数值是否一致。
+    忽略 `$`、逗号、空格等格式，默认只用 `####` 后的数值进行比较。
     """
     import re
 
+    def clean_number(text):
+        # 去除 $, 逗号，空格
+        return re.sub(r"[\$,]", "", text).strip()
+
     try:
-        # 提取参考答案
-        ref_match = re.search(r"####\s*(-?[\d.]+)", reference_answer)
+        # 只从参考答案中提取 #### 后面的数字
+        ref_match = re.search(r"####\s*(-?[\d,\.]+)", reference_answer)
         if not ref_match:
-            print("未能从参考答案中提取出数字：", reference_answer)
+            print("❗无法从参考答案中提取 #### 数字")
             return False
-        ref_answer = ref_match.group(1).strip()
+        ref_answer = clean_number(ref_match.group(1))
 
-        # 提取模型输出的答案
-        gen_patterns = [
-            r"####\s*(-?[\d.]+)",
-            r"(?:final\s+answer|answer|result)(?:\s+is)?[:\s]*(-?[\d.]+)"
-        ]
+        # 尝试从模型输出中提取 #### 后的数字
+        gen_match = re.search(r"####\s*(-?[\d,\.]+)", generated_solution)
+        if gen_match:
+            gen_answer = clean_number(gen_match.group(1))
+        else:
+            # fallback：抓最后一个数字作为候选答案
+            numbers = re.findall(r"-?[\d,\.]+", generated_solution)
+            gen_answer = clean_number(numbers[-1]) if numbers else None
 
-        for pattern in gen_patterns:
-            gen_match = re.search(pattern, generated_solution, re.IGNORECASE)
-            if gen_match and gen_match.lastindex:  # 确保有捕获组
-                gen_answer = gen_match.group(1).strip()
-                return gen_answer == ref_answer
+        # 打印调试信息
+        print(f"Model Output:\n{generated_solution.strip()}")
+        print(f"Extracted Model Answer: {gen_answer}")
+        print(f"Reference Answer: {ref_answer}")
 
-        # 兜底：匹配任何数字进行粗略比较
-        numbers = re.findall(r"-?[\d.]+", generated_solution)
-        for num in numbers:
-            if num.strip() == ref_answer:
-                return True
-
-        print("❗无法从模型输出中匹配到答案")
-        print("模型输出:", generated_solution)
-        print("参考答案:", reference_answer)
-        return False
+        return gen_answer == ref_answer
 
     except Exception as e:
-        print("❗[simplified_check_answer] 匹配异常:", e)
-        print("模型输出:", generated_solution)
-        print("参考答案:", reference_answer)
+        print(f"[Error] simplified_check_answer failed: {e}")
         return False
+
+
+
 
 
 
@@ -297,7 +295,7 @@ def quantize_model_with_bnb(model_path, save_path, bits=8):
     return save_path_with_bits
 
 def run_evaluation(model, tokenizer, num_samples=100, max_new_tokens=512, 
-                  fewshot=5, seed=42, save_dir="./results", verbose=True):
+                  fewshot=8, seed=42, save_dir="./results", verbose=True):
     """
     Evaluate a model on the GSM8K benchmark using few-shot prompting.
     Simplified version that doesn't require a checker model.
@@ -366,6 +364,11 @@ def run_evaluation(model, tokenizer, num_samples=100, max_new_tokens=512,
         is_correct = simplified_check_answer(solution, reference_answer)
         if is_correct:
             correct += 1
+        print(f"\n--- Example {i+1}/{num_samples} ---")
+        print(f"Question:\n{question}")
+        print(f"Model Output:\n{solution.strip()}")
+        print(f"{'Correct' if is_correct else 'Incorrect'}\n")
+
         
         # Store result
         example_results.append({
