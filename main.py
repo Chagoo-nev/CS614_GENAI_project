@@ -27,34 +27,43 @@ def simplified_check_answer(generated_solution, reference_answer):
     """
     import re
 
-    # 提取参考答案
-    ref_match = re.search(r"####\s*(-?[\d.]+)", reference_answer)
-    if not ref_match:
-        return False
-    ref_answer = ref_match.group(1).strip()
+    try:
+        # 提取参考答案
+        ref_match = re.search(r"####\s*(-?[\d.]+)", reference_answer)
+        if not ref_match:
+            print("未能从参考答案中提取出数字：", reference_answer)
+            return False
+        ref_answer = ref_match.group(1).strip()
 
-    # 提取模型输出的答案
-    gen_patterns = [
-        r"####\s*(-?[\d.]+)",
-        r"(?:final\s+answer|answer|result)(?:\s+is)?[:\s]*(-?[\d.]+)"
-    ]
+        # 提取模型输出的答案
+        gen_patterns = [
+            r"####\s*(-?[\d.]+)",
+            r"(?:final\s+answer|answer|result)(?:\s+is)?[:\s]*(-?[\d.]+)"
+        ]
 
-    for pattern in gen_patterns:
-        try:
+        for pattern in gen_patterns:
             gen_match = re.search(pattern, generated_solution, re.IGNORECASE)
-            if gen_match:
+            if gen_match and gen_match.lastindex:  # 确保有捕获组
                 gen_answer = gen_match.group(1).strip()
                 return gen_answer == ref_answer
-        except IndexError:
-            continue  # 有可能 pattern 写错没捕获 group(1)
 
-    # 兜底：匹配所有数字
-    numbers = re.findall(r"-?[\d.]+", generated_solution)
-    for num in numbers:
-        if num.strip() == ref_answer:
-            return True
+        # 兜底：匹配任何数字进行粗略比较
+        numbers = re.findall(r"-?[\d.]+", generated_solution)
+        for num in numbers:
+            if num.strip() == ref_answer:
+                return True
 
-    return False
+        print("❗无法从模型输出中匹配到答案")
+        print("模型输出:", generated_solution)
+        print("参考答案:", reference_answer)
+        return False
+
+    except Exception as e:
+        print("❗[simplified_check_answer] 匹配异常:", e)
+        print("模型输出:", generated_solution)
+        print("参考答案:", reference_answer)
+        return False
+
 
 
 # Function definitions
