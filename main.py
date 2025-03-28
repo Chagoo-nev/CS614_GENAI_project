@@ -275,113 +275,59 @@ def run_lora_training(model_name="meta-llama/Llama-3.1-8B", output_dir="./lora_o
     
     return final_model_dir
 
-def run_quantization(model_path, save_path, bits=8, method="dynamic"):
+def quantize_model_with_bnb(model_path, save_path, bits=8):
     """
-    Apply Post-Training Quantization (PTQ) to a model with device offloading support.
-    
-    Args:
-        model_path: Path to the model to quantize
-        save_path: Path to save the quantized model
-        bits: Quantization precision (4 or 8)
-        method: Quantization method ("dynamic" or "static")
-        
-    Returns:
-        Path to the quantized model
+    使用bitsandbytes对模型进行量化
     """
     import torch
-    import gc
+    from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+    import os
     
-    print(f"Starting Post-Training Quantization ({bits}-bit, {method})...")
-    
-    # Create save directory
-    os.makedirs(save_path, exist_ok=True)
-    
-    # Load model
-    if "lora" in model_path.lower():
-        # If it's a LoRA model, load the base model first, then apply LoRA weights
-        config = PeftConfig.from_pretrained(model_path)
-        base_model = AutoModelForCausalLM.from_pretrained(
-            config.base_model_name_or_path, 
-            torch_dtype=torch.float16,
-            # Use CPU for smaller models, auto for larger ones
-            device_map="cpu" if bits == 8 else "auto"
-        )
-        model = PeftModel.from_pretrained(base_model, model_path)
-        # Merge LoRA weights for quantization
-        model = model.merge_and_unload()
-    else:
-        # Load regular model directly to CPU for 8-bit quantization
-        # or with auto device mapping for 4-bit
-        model = AutoModelForCausalLM.from_pretrained(
-            model_path, 
-            device_map="cpu" if bits == 8 else "auto",
-            torch_dtype=torch.float16
-        )
-    
+    # 创建保存目录
     save_path_with_bits = f"{save_path}_{bits}bit"
     os.makedirs(save_path_with_bits, exist_ok=True)
     
-    try:
-        if bits == 8:
-            # For 8-bit, ensure the model is on CPU
-            if hasattr(model, "hf_device_map"):
-                print("Model has device mapping, using different quantization approach")
-                # Save the model in 8-bit format using bitsandbytes
-                model.save_pretrained(save_path_with_bits, max_shard_size="2GB")
-                print(f"Model saved with device mapping in 8-bit format")
-            else:
-                # Traditional dynamic quantization for CPU models
-                print("Applying 8-bit dynamic quantization...")
-                quantized_model = torch.ao.quantization.quantize_dynamic(
-                    model, {torch.nn.Linear}, dtype=torch.qint8
-                )
-                quantized_model.save_pretrained(save_path_with_bits)
-                print("8-bit quantization applied successfully.")
-        elif bits == 4:
-            # For 4-bit, use bitsandbytes or optimum
-            try:
-                print("Attempting 4-bit quantization with bitsandbytes...")
-                # Try to save in 4-bit format
-                model.save_pretrained(save_path_with_bits, max_shard_size="2GB")
-                print("4-bit quantization applied using model's built-in capability")
-            except Exception as e:
-                print(f"Basic save failed: {e}")
-                print("Attempting alternative 4-bit approach...")
-                try:
-                    from optimum.bettertransformer import BetterTransformer
-                    model = BetterTransformer.transform(model)
-                    model.save_pretrained(save_path_with_bits, max_shard_size="2GB")
-                    print("4-bit quantization applied with BetterTransformer")
-                except ImportError:
-                    print("4-bit quantization requires optimum library")
-                    return None
-        
-        # Save the tokenizer
-        tokenizer = AutoTokenizer.from_pretrained(model_path)
-        tokenizer.save_pretrained(save_path_with_bits)
-        
-        # Save quantization metadata
-        with open(f"{save_path_with_bits}/quantization_info.json", "w") as f:
-            import json
-            import time
-            json.dump({
-                "original_model": model_path,
-                "bits": bits,
-                "method": method,
-                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
-            }, f, indent=2)
-        
-        # Clean up
-        del model
-        if 'quantized_model' in locals():
-            del quantized_model
-        gc.collect()
-        torch.cuda.empty_cache()
-            
-        return save_path_with_bits
-    except Exception as e:
-        print(f"Error during quantization: {e}")
-        return None
+    # 创建量化配置
+    if bits == 8:
+        quantization_config = BitsAndBytesConfig(
+            load_in_8bit=True,
+            llm_int8_threshold=6.0
+        )
+    else:  # 4位量化
+        quantization_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=torch.float16,
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_quant_type="nf4"
+        )
+    
+    # 使用量化配置加载模型
+    model = AutoModelForCausalLM.from_pretrained(
+        model_path,
+        quantization_config=quantization_config,
+        device_map="auto"
+    )
+    
+    # 加载tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(model_path)
+    
+    # 保存模型和tokenizer
+    model.save_pretrained(save_path_with_bits, max_shard_size="2GB")
+    tokenizer.save_pretrained(save_path_with_bits)
+    
+    # 保存量化信息
+    with open(f"{save_path_with_bits}/quantization_info.json", "w") as f:
+        import json
+        import time
+        json.dump({
+            "original_model": model_path,
+            "bits": bits,
+            "method": "bitsandbytes",
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+        }, f, indent=2)
+    
+    print(f"模型已量化并保存到 {save_path_with_bits}")
+    return save_path_with_bits
 
 def run_evaluation(model, tokenizer, num_samples=100, max_new_tokens=512, 
                   fewshot=5, seed=42, save_dir="./results", verbose=True):
