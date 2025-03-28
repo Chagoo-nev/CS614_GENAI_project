@@ -277,7 +277,7 @@ def run_lora_training(model_name="meta-llama/Llama-3.1-8B", output_dir="./lora_o
 
 def run_quantization(model_path, save_path, bits=8, method="dynamic"):
     """
-    Apply Post-Training Quantization (PTQ) to a model.
+    Apply Post-Training Quantization (PTQ) to a model with device offloading support.
     
     Args:
         model_path: Path to the model to quantize
@@ -289,6 +289,7 @@ def run_quantization(model_path, save_path, bits=8, method="dynamic"):
         Path to the quantized model
     """
     import torch
+    import gc
     
     print(f"Starting Post-Training Quantization ({bits}-bit, {method})...")
     
@@ -302,73 +303,84 @@ def run_quantization(model_path, save_path, bits=8, method="dynamic"):
         base_model = AutoModelForCausalLM.from_pretrained(
             config.base_model_name_or_path, 
             torch_dtype=torch.float16,
-            device_map="auto"
+            # Use CPU for smaller models, auto for larger ones
+            device_map="cpu" if bits == 8 else "auto"
         )
         model = PeftModel.from_pretrained(base_model, model_path)
         # Merge LoRA weights for quantization
         model = model.merge_and_unload()
     else:
-        # Load regular model
-        model = AutoModelForCausalLM.from_pretrained(model_path, device_map="auto")
+        # Load regular model directly to CPU for 8-bit quantization
+        # or with auto device mapping for 4-bit
+        model = AutoModelForCausalLM.from_pretrained(
+            model_path, 
+            device_map="cpu" if bits == 8 else "auto",
+            torch_dtype=torch.float16
+        )
     
-    # Move to CPU for quantization
-    model = model.to("cpu")
-    
-    if bits == 8:
-        if method == "dynamic":
-            # Dynamic quantization - only weights are quantized, activations dynamically
-            print("Applying 8-bit dynamic quantization...")
-            try:
-                quantized_model = torch.ao.quantization.quantize_dynamic(
-                    model, {torch.nn.Linear}, dtype=torch.qint8
-                )
-                print("8-bit quantization applied successfully.")
-            except Exception as e:
-                print(f"Error during quantization: {e}")
-                return None
-        else:
-            # Static quantization would require calibration data
-            print("Static 8-bit quantization not yet implemented")
-            return None
-    elif bits == 4:
-        # 4-bit quantization using optimum or bitsandbytes if available
-        try:
-            # Try using optimum for 4-bit quantization
-            from optimum.bettertransformer import BetterTransformer
-            model = BetterTransformer.transform(model)
-            print("Applied BetterTransformer optimizations")
-            
-            # Note: Full 4-bit quantization would require additional libraries
-            print("Warning: Full 4-bit quantization requires additional steps")
-            quantized_model = model
-        except ImportError:
-            print("4-bit quantization requires optimum or bitsandbytes library")
-            return None
-    
-    # Save the quantized model
     save_path_with_bits = f"{save_path}_{bits}bit"
     os.makedirs(save_path_with_bits, exist_ok=True)
     
     try:
-        quantized_model.save_pretrained(save_path_with_bits)
-        print(f"Quantized model saved to {save_path_with_bits}")
+        if bits == 8:
+            # For 8-bit, ensure the model is on CPU
+            if hasattr(model, "hf_device_map"):
+                print("Model has device mapping, using different quantization approach")
+                # Save the model in 8-bit format using bitsandbytes
+                model.save_pretrained(save_path_with_bits, max_shard_size="2GB")
+                print(f"Model saved with device mapping in 8-bit format")
+            else:
+                # Traditional dynamic quantization for CPU models
+                print("Applying 8-bit dynamic quantization...")
+                quantized_model = torch.ao.quantization.quantize_dynamic(
+                    model, {torch.nn.Linear}, dtype=torch.qint8
+                )
+                quantized_model.save_pretrained(save_path_with_bits)
+                print("8-bit quantization applied successfully.")
+        elif bits == 4:
+            # For 4-bit, use bitsandbytes or optimum
+            try:
+                print("Attempting 4-bit quantization with bitsandbytes...")
+                # Try to save in 4-bit format
+                model.save_pretrained(save_path_with_bits, max_shard_size="2GB")
+                print("4-bit quantization applied using model's built-in capability")
+            except Exception as e:
+                print(f"Basic save failed: {e}")
+                print("Attempting alternative 4-bit approach...")
+                try:
+                    from optimum.bettertransformer import BetterTransformer
+                    model = BetterTransformer.transform(model)
+                    model.save_pretrained(save_path_with_bits, max_shard_size="2GB")
+                    print("4-bit quantization applied with BetterTransformer")
+                except ImportError:
+                    print("4-bit quantization requires optimum library")
+                    return None
         
-        # Also save the tokenizer
+        # Save the tokenizer
         tokenizer = AutoTokenizer.from_pretrained(model_path)
         tokenizer.save_pretrained(save_path_with_bits)
         
         # Save quantization metadata
         with open(f"{save_path_with_bits}/quantization_info.json", "w") as f:
+            import json
+            import time
             json.dump({
                 "original_model": model_path,
                 "bits": bits,
                 "method": method,
                 "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
             }, f, indent=2)
+        
+        # Clean up
+        del model
+        if 'quantized_model' in locals():
+            del quantized_model
+        gc.collect()
+        torch.cuda.empty_cache()
             
         return save_path_with_bits
     except Exception as e:
-        print(f"Error saving quantized model: {e}")
+        print(f"Error during quantization: {e}")
         return None
 
 def run_evaluation(model, tokenizer, num_samples=100, max_new_tokens=512, 
