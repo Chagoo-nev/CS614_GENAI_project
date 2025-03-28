@@ -20,7 +20,7 @@ from utils.data_utils import load_gsm8k_data, get_fewshot_examples, create_fewsh
 from utils.eval_utils import calculate_metrics, save_results, print_evaluation_summary,generate_solution
 
 # For simplified evaluation without checker model
-def simplified_check_answer(generated_solution, reference_answer, verbose=False):
+def simplified_check_answer(generate_solution, reference_answer, verbose=False):
     """
     提取模型输出与参考答案中 `#### num` 的数字，仅比较数值是否一致。
     忽略 `$`、逗号、空格等格式，默认只用 `####` 后的数值进行比较。
@@ -58,20 +58,20 @@ def simplified_check_answer(generated_solution, reference_answer, verbose=False)
         gen_answer = None
         
         # 方法1：尝试匹配 #### 
-        gen_match = re.search(r"####\s*(-?[\d,\.]+)", generated_solution)
+        gen_match = re.search(r"####\s*(-?[\d,\.]+)", generate_solution)
         if gen_match:
             gen_answer = clean_number(gen_match.group(1))
         
         # 方法2：尝试匹配 "答案是" 或 "answer is" 等常见模式
         if gen_answer is None:
             answer_match = re.search(r"(?:答案|answer|result)(?:\s+is)?[\s:]+(-?[\d,\.]+)", 
-                                    generated_solution, re.IGNORECASE)
+                                    generate_solution, re.IGNORECASE)
             if answer_match:
                 gen_answer = clean_number(answer_match.group(1))
         
         # 方法3：提取所有数字，使用最后一个
         if gen_answer is None:
-            numbers = re.findall(r"-?[\d,\.]+", generated_solution)
+            numbers = re.findall(r"-?[\d,\.]+", generate_solution)
             if numbers:
                 gen_answer = clean_number(numbers[-1])
         
