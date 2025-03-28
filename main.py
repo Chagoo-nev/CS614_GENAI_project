@@ -11,7 +11,7 @@ import torch
 import re
 import time
 import json
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from peft import PeftModel, PeftConfig
 
 # Import project utilities
@@ -540,8 +540,8 @@ def run_colab_workflow(mode='train', model_name="Llama-3.1-8B",
                     model_to_quantize = model_path
                     print(f"Using base model for quantization: {model_to_quantize}")
         
-        # Apply quantization
-        quantized_model_path = run_quantization(
+        # 将 run_quantization 替换为 quantize_model_with_bnb
+        quantized_model_path = quantize_model_with_bnb(
             model_path=model_to_quantize,
             save_path="./quantized_model",
             bits=quant_bits
@@ -564,7 +564,7 @@ def run_colab_workflow(mode='train', model_name="Llama-3.1-8B",
             'bits': quant_bits,
             'completed': quantized_model_path is not None
         }
-    
+        
     # --- EVALUATION ---
     if mode == 'evaluate' or mode == 'all':
         print("\n=== EVALUATION MODE ===")
